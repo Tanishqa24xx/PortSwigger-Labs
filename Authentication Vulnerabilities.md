@@ -390,4 +390,91 @@ http://vulnerable-website.com/reset-password?token=<high-entropy-token>
 - A potential flaw occurs when the application does not validate the token again when the reset form is submitted.
 - An attacker could potentially access a reset page from their own account, remove or invalidate the original token, and then use the same page to reset another user's password.
 
+---
+
+## Lab: Password Reset Broken Logic
+
+1. Followed the normal password-reset process for wiener:peter: clicked Forgot password, entered the username, checked the email inbox for the reset link, and set a new password.
+2. Checked the HTTP history and inspected the POST request sent when setting the new password.
+3. Found the following parameters:
+```text
+temp-forgot-password-token=t1ucg90pj0zkbaqe6zzp8xsolbj53xne&username=wiener&new-password-1=peter1&new-password-2=peter1
+```
+4. Sent the request to Repeater.
+5. Based on the theory, I understood that the token was not being validated again.
+6. Removed the entire token parameter from the URL and request body and changed the username to carlos. The request looked like this:
+```text
+POST /forgot-password HTTP/2
+username=carlos&new-password-1=peter1&new-password-2=peter1
+```
+7. However, I only needed to remove the token's value, not the entire parameter.
+8. The final request was:
+```bash
+POST /forgot-password?temp-forgot-password-token= HTTP/2
+temp-forgot-password-token=&username=carlos&new-password-1=peter1&new-password-2=peter1
+```
+9. The response status was 302, which meant the password had been changed successfully.
+10. Logged in to Carlos's account using the new password.
+11. Opened My account and confirmed that the lab was solved.
+
+---
+
+## Password Reset Poisoning
+
+- If the URL in a password-reset email is generated dynamically, an attacker may be able to manipulate it.
+- The attacker can potentially steal another user's token and use it to change that user's password.
+
+---
+
+## Lab: Password Reset Poisoning via Middleware
+
+1. Turned Intercept on in Burp Suite Proxy.
+2. Went to My account → Forgot password and entered wiener.
+3. Received the reset link in the email client on the exploit server, visited it, and changed the password to peter1.
+4. Turned Intercept off. Checked the HTTP history and found the POST /forgot-password request that sent only the username. There was no token or other check in this request.
+5. The follow-up POST request contained temp-forgot-password-token, new-password-1, and new-password-2 in the request body. Sent both requests to Repeater.
+6. In the request that contained only the username, changed the username to carlos and sent the request.
+7. Checked the exploit server's access log.
+   <img height="100" alt="image" src="https://github.com/user-attachments/assets/88a61fc1-3a1a-4892-9fe7-e22262dfe731" />
+8. Found Carlos's token, which I should not have been able to access.
+9. Copied the token and replaced Wiener's token with Carlos's token in the password-reset request. Sent the request.
+10. The response returned a 300 status, indicating that the password had been changed.
+11. Went to My account in the browser and logged in as carlos:peter1.
+12. Confirmed that the lab was solved.
+
+---
+
+## Changing User Passwords
+
+- A typical password-change process requires the user to enter their current password and then their new password.
+- This can be dangerous if the application allows an attacker to access the functionality directly without being logged in as the victim.
+- For example, if the username is stored in a hidden field, an attacker might be able to modify it in the request and target arbitrary users.
+- This can be exploited to enumerate usernames and brute-force passwords.
+
+---
+
+## Lab: Password Brute-Force via Password Change
+
+1. Went through the password-change process for wiener:peter and set the new password to peter1. Captured all the requests in Burp Suite.
+2. Inspected the POST requests and identified POST /my-account/change-password HTTP/2 as the useful request. Sent it to Repeater.
+3. Set the two new-password parameters to different values.
+   <img height="100" alt="image" src="https://github.com/user-attachments/assets/83fe845a-1898-4b04-a442-586ea61c83cb" />
+4. The response showed the error New passwords do not match. It did not mention that the current password was wrong, which suggested that the current password was probably correct.
+5. Sent the request to Intruder and configured the following:
+   <img height="100" alt="image" src="https://github.com/user-attachments/assets/4eadb674-53d4-4c0a-9cd5-6a56791f508e" />
+6. Used a Sniper attack to brute-force the password. While analysing the responses, I found one with a length of 4114 bytes, while the others were 4117 bytes.
+7. Logged in to Carlos's account using the password dragon. The lab was solved.
+
+---
+
+## Securing Authentication Mechanisms
+
+- Take care when handling user credentials.
+- Do not rely on users to maintain security.
+- Prevent username enumeration.
+- Implement robust brute-force protection, such as strict IP-based user rate limiting and CAPTCHA tests.
+- Triple-check verification logic. A check that can be bypassed is no better than having no check at all.
+- Do not forget supplementary functionality.
+- Implement proper multi-factor authentication (MFA).
+
 
